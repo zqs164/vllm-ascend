@@ -104,16 +104,13 @@ def verify_and_update_config(cls, vllm_config) -> None:
             "exactly equal.",
             mamba_padding_pct,
         )
-    if using_kv_transfer_with_hybrid:
-        if cache_config.mamba_cache_mode == "none":
-            cache_config.mamba_cache_mode = "align"
-        else:
-            assert cache_config.mamba_cache_mode == "align", (
-                "mamba_cache_mode only support 'align' when kv_transfer enabled now!"
-            )
-        cache_config.mamba_block_size = cache_config.block_size
 
     if cache_config.enable_prefix_caching and cache_config.mamba_cache_mode == "align":
+        cache_config.mamba_block_size = cache_config.block_size
+    elif using_kv_transfer_with_hybrid and cache_config.mamba_cache_mode != "none":
+        assert cache_config.mamba_cache_mode == "align", (
+            "mamba_cache_mode only support 'align' when kv_transfer enabled now!"
+        )
         cache_config.mamba_block_size = cache_config.block_size
     else:
         cache_config.mamba_block_size = model_config.max_model_len
