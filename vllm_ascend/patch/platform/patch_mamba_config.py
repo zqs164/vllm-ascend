@@ -22,7 +22,8 @@ def verify_and_update_config(cls, vllm_config) -> None:
         vllm_config: vLLM Config
     """
     using_kv_transfer_with_hybrid = (
-        not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and vllm_config.kv_transfer_config
+            not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager
+            and vllm_config.kv_transfer_config is not None
     )
     # Enable FULL_AND_PIECEWISE by default
     MambaModelConfig.verify_and_update_config(vllm_config)
@@ -110,6 +111,8 @@ def verify_and_update_config(cls, vllm_config) -> None:
             assert cache_config.mamba_cache_mode == "align", (
                 "mamba_cache_mode only support 'align' when kv_transfer enabled now!"
             )
+        cache_config.mamba_block_size = cache_config.block_size
+
     if cache_config.enable_prefix_caching and cache_config.mamba_cache_mode == "align":
         cache_config.mamba_block_size = cache_config.block_size
     else:
