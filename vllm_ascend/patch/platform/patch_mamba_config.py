@@ -9,6 +9,24 @@ from vllm.utils.math_utils import cdiv
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE, get_dtype_size
 
 
+def _using_kv_store(vllm_config) -> bool:
+    """
+    Check whether AscendStoreConnector is used.
+    In the scenario where only PD separation is used, mamba_cache_mode is not automatically set to align.
+    """
+    if not vllm_config.kv_transfer_config:
+        return False
+    if vllm_config.kv_transfer_config.kv_connector == "AscendStoreConnector":
+        return True
+    if vllm_config.kv_transfer_config.kv_connector == "MultiConnector":
+        kv_connector_extra_config = vllm_config.kv_transfer_config.kv_connector_extra_config
+        if not kv_connector_extra_config:
+            return False
+        if connectors := kv_connector_extra_config.get("connectors"):
+            return any(connector.get("kv_connector") == "AscendStoreConnector" for connector in connectors)
+    return False
+
+
 @classmethod
 def verify_and_update_config(cls, vllm_config) -> None:
     """
@@ -21,6 +39,10 @@ def verify_and_update_config(cls, vllm_config) -> None:
     Args:
         vllm_config: vLLM Config
     """
+    using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+        vllm_config
+    )
+    logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
     # Enable FULL_AND_PIECEWISE by default
     MambaModelConfig.verify_and_update_config(vllm_config)
 
@@ -100,6 +122,13 @@ def verify_and_update_config(cls, vllm_config) -> None:
             "exactly equal.",
             mamba_padding_pct,
         )
+    if using_kv_store_with_hybrid:
+        if cache_config.mamba_cache_mode == "none":
+            cache_config.mamba_cache_mode = "align"
+        else:
+            assert cache_config.mamba_cache_mode == "align", (
+                "mamba_cache_mode only support 'align' when kv_transfer enabled now!"
+            )
     if cache_config.enable_prefix_caching and cache_config.mamba_cache_mode == "align":
         cache_config.mamba_block_size = cache_config.block_size
     else:
